@@ -119,7 +119,45 @@ static struct rchan_callbacks relay_callbacks = {
 	.create_buf_file = create_handler,
 	.remove_buf_file = remove_handler,
 };
+//////////////////////////////////////////////////////
+static struct task_struct *tasks[NR_CPUS];
 
+#define TRACE_BATCH	256
+
+static int tester_fn(void *arg)
+{
+	while( ! kthread_should_stop()) {
+		int i = 0;
+		for (i = 0; i < TRACE_BATCH; i++) {
+			alloc_trace_alloc((u64)&tester_fn, i, 0, 0);
+		}
+		schedule();
+	}
+	return 0;
+}
+
+static int tester_init(void)
+{
+	int cpu;
+	for (cpu = 0; cpu < num_online_cpus(); cpu++) {
+
+		tasks[cpu] = kthread_create_on_node(tester_fn, NULL,
+							cpu_to_node(cpu),
+							"tester_%d", cpu);
+		kthread_bind(tasks[cpu], cpu);
+	}
+	return 0;
+}
+
+static void tester_exit(void)
+{
+	int cpu;
+	for (cpu = 0; cpu < num_online_cpus(); cpu++) {
+		kthread_stop(tasks[cpu]);
+	}
+}
+
+//////////////////////////////////////////////////////
 static int __init memtrace_init(void)
 {
 	trace_global_len = SUBUFF_SIZE/sizeof(struct trace_entry);
