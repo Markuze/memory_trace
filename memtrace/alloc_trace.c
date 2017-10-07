@@ -2,6 +2,7 @@
 #include <linux/module.h>
 #include <linux/relay.h>
 #include <linux/debugfs.h>
+#include <linux/kthread.h> //for testing
 #include <asm/msr.h>
 
 MODULE_LICENSE("GPL");
@@ -139,6 +140,7 @@ static int tester_fn(void *arg)
 static int tester_init(void)
 {
 	int cpu;
+	pr_info("spawning tracer threads\n");
 	for (cpu = 0; cpu < num_online_cpus(); cpu++) {
 
 		tasks[cpu] = kthread_create_on_node(tester_fn, NULL,
@@ -152,11 +154,31 @@ static int tester_init(void)
 static void tester_exit(void)
 {
 	int cpu;
+	pr_info("stopping tracer threads\n");
 	for (cpu = 0; cpu < num_online_cpus(); cpu++) {
 		kthread_stop(tasks[cpu]);
 	}
+	pr_info("tracer threads done\n");
 }
 
+static bool test_running;
+static int test_get(void *data, u64 *val)
+{
+	*val = test_running;
+	return 0;
+}
+static int test_set(void *data, u64 val)
+{
+	test_running ^= 1;
+	if (test_running)
+		tester_init();
+	else
+		tester_exit();
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(test_fops, test_get,
+			test_set, "%llu\n");
 //////////////////////////////////////////////////////
 static int __init memtrace_init(void)
 {
@@ -170,6 +192,9 @@ static int __init memtrace_init(void)
 		return 0;
 	}
 	pr_info("memtarce loaded\n");
+	pr_info("start testing...\n");
+	debugfs_create_file("toggle_test", 0666, dir, NULL,
+				   &test_fops);
 	return 0;
 }
 
