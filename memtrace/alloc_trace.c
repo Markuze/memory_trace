@@ -35,7 +35,7 @@ struct trace_entry {
 
 #define SUBUFF_SIZE	(sizeof(struct trace_entry) << 20)
 #define N_SUBBUFFS	1
-#define STOP_MASK	((BIT(13) -1))
+#define STOP_MASK	((BIT(13) -1)) //Poll total sum every 8K traces
 
 static struct rchan *rchan;
 static struct dentry *dir, *active, *size;
@@ -127,6 +127,7 @@ static struct task_struct *tasks[NR_CPUS];
 
 static int tester_fn(void *arg)
 {
+	pr_info("tracing on %d\n", smp_processor_id());
 	while( ! kthread_should_stop()) {
 		int i = 0;
 		for (i = 0; i < TRACE_BATCH; i++) {
@@ -140,13 +141,14 @@ static int tester_fn(void *arg)
 static int tester_init(void)
 {
 	int cpu;
-	pr_info("spawning tracer threads\n");
+	pr_info("spawning tracer threads [%d]\n", num_online_cpus());
 	for (cpu = 0; cpu < num_online_cpus(); cpu++) {
 
 		tasks[cpu] = kthread_create_on_node(tester_fn, NULL,
 							cpu_to_node(cpu),
 							"tester_%d", cpu);
 		kthread_bind(tasks[cpu], cpu);
+		wake_up_process(tasks[cpu]);
 	}
 	return 0;
 }
