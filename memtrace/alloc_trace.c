@@ -2,6 +2,7 @@
 #include <linux/module.h>
 #include <linux/relay.h>
 #include <linux/debugfs.h>
+#include <linux/dylog.h>
 #include <linux/kthread.h> //for testing
 #include <asm/msr.h>
 
@@ -193,10 +194,11 @@ static int __init memtrace_init(void)
 		pr_err("Failed to relay_open...");
 		return 0;
 	}
+	dylog_register(alloc_trace_alloc, alloc_trace_napi);
 	pr_info("memtarce loaded\n");
-	pr_info("start testing...\n");
-	debugfs_create_file("toggle_test", 0666, dir, NULL,
-				   &test_fops);
+	//pr_info("start testing...\n");
+	//debugfs_create_file("toggle_test", 0666, dir, NULL,
+	//			   &test_fops);
 	return 0;
 }
 
@@ -206,6 +208,7 @@ static void __exit memtrace_exit(void)
 		relay_close(rchan);
 	}
 	debugfs_remove_recursive(dir);
+	dylog_unregister();
 	pr_info("memtrace out [mdata %ld trace %ld]\n",
 		sizeof(struct percpu_mdata),
 		sizeof(struct trace_entry));

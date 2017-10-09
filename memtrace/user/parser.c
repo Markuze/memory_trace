@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <errno.h>
 
 struct trace_entry {
 	union {
@@ -41,11 +42,14 @@ int main(void)
 		return 0;
 	}
 
-	sprintf(name, "%smemtrace%d",TRACE_PATH, 0);
+	sprintf(name, "%smemtrace%d",TRACE_PATH, 1);
 	fd = open(name, O_RDONLY);
 
-	entry = mmap(NULL, SUBUFF_SIZE * N_SUBBUFFS, PROT_READ, MAP_SHARED, fd, 0);
-	printf("fd %d for %s mapped to %p\n", fd, name, entry);
+	entry = mmap(NULL, SUBUFF_SIZE * N_SUBBUFFS, PROT_READ, MAP_PRIVATE, fd, 0);
+
+	printf("fd %d for %s mapped to %p [%d]\n", fd, name, entry, errno);
+	if ((uint64_t)entry == -1)
+		return 0;
 	for (acc = 0; acc < 16; acc++) {
 		dump_entry(entry++);
 	}
