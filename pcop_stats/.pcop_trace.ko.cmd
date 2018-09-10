@@ -1,0 +1,1 @@
+cmd_/homes/markuze/modules/pcop_stats/pcop_trace.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /homes/markuze/modules/pcop_stats/pcop_trace.ko /homes/markuze/modules/pcop_stats/pcop_trace.o /homes/markuze/modules/pcop_stats/pcop_trace.mod.o ;  true
