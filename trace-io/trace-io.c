@@ -27,10 +27,10 @@ static inline int dump_per_core_trace(uint16_t cpu, int *cnt, char __user *buf, 
 		if (max < *cnt + 50 * ((TOP-log->len)/STEP) )
 			break;
 		for (i = log->len; i < TOP; i+=  STEP) {
-			char line[256];
+			char line[64];
 			int len;
 			struct io_trace_line *trace = (struct io_trace_line *)&log->bytes[i];
-			len = snprintf(line, 256, "%llx: %llx [%d] t %d\n",
+			len = snprintf(line, 256, "<%llx: %llx [%d] t %d>\n",
 					trace->tsc, trace->addr, trace->size, trace->type);
 			max_len = (max_len < len) ? len : max_len;
 			if (max <= *cnt +len)
@@ -47,7 +47,7 @@ static inline int dump_per_core_trace(uint16_t cpu, int *cnt, char __user *buf, 
 		log->len = TOP;
 		log = log->next;
 	}
-	pr_err("max len = %u [%lu] buffers %d\n", max_len, (TOP/STEP * max_len), buffers);
+	trace_printk("max len = %u [%lu] buffers %d\n", max_len, (TOP/STEP * max_len), buffers);
 	return !!max_len;
 }
 
@@ -77,7 +77,7 @@ static ssize_t traceio_read(struct file *file, char __user *buf,
 
 		len = snprintf(line, 256, "online cpu %d\n", cpu);
 		if (buflen <= cnt + len + 50 * (TOP/STEP) ) {
-			trace_printk("check failed...\n");
+			trace_printk("<%d>check failed...\n", cpu);
 			break;
 		}
 		cnt += len;
