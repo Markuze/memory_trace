@@ -1,5 +1,6 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/mm.h>
 #include <linux/proc_fs.h>
 #include <linux/module.h>
 
@@ -54,14 +55,59 @@ static ssize_t poller_read(struct file *file, char __user *buf,
 	return out * cnt;
 }
 
-int noop_open(struct inode *inode, struct file *file) { return 0; }
+static int noop_open(struct inode *inode, struct file *file)
+{
+	trace_printk("%s\n", __FUNCTION__);
+	return 0;
+}
+
+static void vm_open(struct vm_area_struct *vma)
+{
+	trace_printk("%s\n", __FUNCTION__);
+}
+
+static void vm_close(struct vm_area_struct *vma)
+{
+	trace_printk("%s\n", __FUNCTION__);
+}
+
+static vm_fault_t vm_fault(struct vm_fault *vmf)
+{
+	struct page *page;
+
+	trace_printk("%s [%lu]\n", __FUNCTION__, vmf->address);
+
+	page = alloc_page(vmf->gfp_mask);
+	if (unlikely(!page))
+		return VM_FAULT_OOM;
+
+	vmf->page = page;
+
+	return 0;
+}
+
+static struct vm_operations_struct vm_ops =
+{
+	.close	= vm_close,
+	.fault	= vm_fault,
+	.open	= vm_open,
+};
+
+static int poller_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	trace_printk("%s: [%lu:%lu]\n", __FUNCTION__, vma->vm_start, vma->vm_end);
+
+	vma->vm_ops = &vm_ops;
+	return 0;
+}
 
 static const struct file_operations poller_fops = {
-        .owner   = THIS_MODULE,
-        .open    = noop_open,
-        .read    = poller_read,
-        .write   = poller_write,
-        .llseek  = noop_llseek,
+	.owner	= THIS_MODULE,
+	.open	= noop_open,
+	.read	= poller_read,
+	.write	= poller_write,
+	.mmap 	= poller_mmap,
+	.llseek	= noop_llseek,
 };
 
 static __init int poller_init(void)
