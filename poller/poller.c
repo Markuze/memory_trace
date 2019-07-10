@@ -14,7 +14,7 @@ MODULE_VERSION("0.1");
 #define POLLER_DIR_NAME "io_poller"
 #define procname "mngmnt"
 
-static struct proc_dir_entry *cbn_dir;
+static struct proc_dir_entry *proc_dir;
 
 static ssize_t poller_write(struct file *file, const char __user *buf,
                               size_t len, loff_t *ppos)
@@ -66,8 +66,8 @@ static const struct file_operations poller_fops = {
 
 static __init int poller_init(void)
 {
-	dir = proc_mkdir_mode(POLLER_DIR_NAME, 00555, NULL);
-	if (!proc_create(procname, 0666, dir, &poller_fops))
+	proc_dir = proc_mkdir_mode(POLLER_DIR_NAME, 00555, NULL);
+	if (!proc_create(procname, 0666, proc_dir, &poller_fops))
 		goto err;
 
 	return 0;
@@ -77,7 +77,7 @@ err:
 
 static __exit void poller_exit(void)
 {
-	remove_proc_entry(procname, NULL);
+	remove_proc_subtree(POLLER_DIR_NAME, NULL);
 }
 
 module_init(poller_init);

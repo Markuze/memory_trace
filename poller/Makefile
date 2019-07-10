@@ -1,4 +1,4 @@
-obj-m := trace-io.o
+obj-m := poller.o
 
 all:
 	make -C /lib/modules/`uname -r`/build M=$(PWD) modules
