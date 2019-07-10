@@ -27,7 +27,7 @@ static ssize_t poller_write(struct file *file, const char __user *buf,
 static ssize_t poller_read(struct file *file, char __user *buf,
                              size_t buflen, loff_t *ppos)
 {
-	int cpu, cnt = 0, out = 0;
+	int cnt = 0, out = 0;
 	if (!buf)
 		return -EINVAL;
 #if 0
@@ -73,15 +73,15 @@ static void vm_close(struct vm_area_struct *vma)
 
 static vm_fault_t vm_fault(struct vm_fault *vmf)
 {
-	struct page *page;
+	struct page *page = (struct page *)vmf->vma->vm_private_data;
+	unsigned long idx = vmf->address;
 
-	trace_printk("%s [%lu]\n", __FUNCTION__, vmf->address);
+	idx -= vmf->vma->vm_start;
+	idx >>= PAGE_SHIFT;
 
-	page = alloc_page(vmf->gfp_mask);
-	if (unlikely(!page))
-		return VM_FAULT_OOM;
+	trace_printk("%s [%lu][%lu]\n", __FUNCTION__, vmf->address, idx);
 
-	vmf->page = page;
+	vmf->page = &page[idx];
 
 	return 0;
 }
@@ -95,9 +95,19 @@ static struct vm_operations_struct vm_ops =
 
 static int poller_mmap(struct file *filp, struct vm_area_struct *vma)
 {
-	trace_printk("%s: [%lu:%lu]\n", __FUNCTION__, vma->vm_start, vma->vm_end);
+	struct page *page;
 
+	trace_printk("%s: [%lu:%lu][%d]\n", __FUNCTION__,
+			vma->vm_start, vma->vm_end,
+			get_order(vma->vm_end - vma->vm_start));
+
+	page = alloc_pages(GFP_KERNEL|__GFP_COMP, get_order(vma->vm_end - vma->vm_start));
+	if (unlikely(!page))
+		return VM_FAULT_OOM;
+
+	vma->vm_private_data = page;
 	vma->vm_ops = &vm_ops;
+
 	return 0;
 }
 
