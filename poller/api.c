@@ -8,20 +8,24 @@
 #include <unistd.h> /* sysconf */
 
 #define MGMT	"/proc/io_poller/mngmnt"
+#define num_pages  8
+
 int main(void)
 {
 	char *addr;
-	int fd  = open(MGMT, O_RDWR|O_SYNC);
+	int i,  fd  = open(MGMT, O_RDWR|O_SYNC);
 	if (fd < 0) {
 		printf("failed to open %d\n", fd);
 		return 1;
 	}
 
-	addr = mmap(0, 4 << 12, PROT_READ|PROT_WRITE|MAP_POPULATE, MAP_SHARED, fd, 0);
+	addr = mmap(0, num_pages << 12, PROT_READ|PROT_WRITE|MAP_POPULATE, MAP_SHARED, fd, 0);
 
 	close(fd);
 
 	printf("%p\n", addr);
-	snprintf(addr, 64, "Hello\n");
+	for (i = 0; i < num_pages; i++, addr+= (1<<12)) {
+		snprintf(addr, 64, "Hello\n");
+	}
 	return 1;
 }
