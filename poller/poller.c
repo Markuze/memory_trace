@@ -95,7 +95,7 @@ static void vm_close(struct vm_area_struct *vma)
 
 static vm_fault_t vm_fault(struct vm_fault *vmf)
 {
-	struct page *page = (struct page *)vmf->vma->vm_private_data;
+	struct priv_data *priv = (struct priv_data *)vmf->vma->vm_private_data;
 	unsigned long idx = vmf->address;
 
 	idx -= vmf->vma->vm_start;
@@ -103,7 +103,7 @@ static vm_fault_t vm_fault(struct vm_fault *vmf)
 
 	trace_printk("%s [%lu][%lu]\n", __FUNCTION__, vmf->address, idx);
 
-	vmf->page = &page[idx];
+	vmf->page = &priv->page[idx];
 
 	return 0;
 }
@@ -133,7 +133,7 @@ static inline int poll_ring(struct priv_data *priv)
 				sizeof(struct polled_io_entry) + entry->len):
 				page_address(priv->page);
 
-		trace_printk("status %d len %d next %p\n", entry->status, entry->len, next);
+		trace_printk("status %d len %d next %p [%s]\n", entry->status, entry->len, next, entry->buffer);
 		entry->status = POLL_RING_STATUS_USER;
 		++cnt;
 		entry = next;
@@ -147,6 +147,7 @@ static int poll_thread(void *data)
 	struct priv_data *priv = data;
 	int pkts = 0;
 
+	trace_printk("Poller running...\n");
 	while (!kthread_should_stop()) {
 		pkts = poll_ring(priv);
 		usleep_range(16, 128);
@@ -181,12 +182,11 @@ static int poller_mmap(struct file *filp, struct vm_area_struct *vma)
 		return VM_FAULT_OOM;
 	}
 	priv->loc = page_address(priv->page);
-	priv->task  = kthread_run( poll_thread, priv, "poll_thread");
+	priv->task  = kthread_run(poll_thread, priv, "poll_thread");
 	priv->vma = vma;
 	vma->vm_private_data = priv;
 	filp->private_data = priv;
 	list_add(&priv->list, &priv_list);
-
 
 	vma->vm_ops = &vm_ops;
 
