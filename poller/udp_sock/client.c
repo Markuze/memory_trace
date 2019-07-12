@@ -8,12 +8,16 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-#define PORT	 8080
+#define PORT	8080
 #define MAXLINE 1024
+#define SERVER_ADDR (10<<24|1<<16|4<<8|38) /*10.1.4.38*/
 
+#define max(a,b) (a < b) ? b : a
 // Driver code
 int main() {
 	int sockfd;
+	int i, len;
+	int flags = MSG_CONFIRM;
 	char buffer[MAXLINE];
 	char *hello = "Hello from client";
 	struct sockaddr_in	 servaddr;
@@ -29,21 +33,21 @@ int main() {
 	// Filling server information
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port = htons(PORT);
-	servaddr.sin_addr.s_addr = INADDR_ANY;
+	servaddr.sin_addr.s_addr = htonl(SERVER_ADDR);
 
-	int n, len;
-
-	sendto(sockfd, (const char *)hello, strlen(hello),
-		MSG_CONFIRM, (const struct sockaddr *) &servaddr,
-			sizeof(servaddr));
-	printf("Hello message sent.\n");
-
+	for (i = 0; i < (1<<25); i++) {
+		sendto(sockfd, (const char *)hello, max(strlen(hello), 42),
+			flags, (const struct sockaddr *) &servaddr,
+				sizeof(servaddr));
+	}
+	printf("Hello message sent.(%d)\n", i);
+/*
 	n = recvfrom(sockfd, (char *)buffer, MAXLINE,
 				MSG_WAITALL, (struct sockaddr *) &servaddr,
 				&len);
 	buffer[n] = '\0';
 	printf("Server : %s\n", buffer);
-
+*/
 	close(sockfd);
 	return 0;
 }
