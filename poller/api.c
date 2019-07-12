@@ -7,11 +7,13 @@
 #include <sys/mman.h>
 #include <unistd.h> /* sysconf */
 
+#include <sched.h>
+
 #define MGMT	"/proc/io_poller/mngmnt"
 #define num_pages  8
 
 struct polled_io_entry {
-	int status;
+	volatile int status;
 	int len;
 	//Add msg_head or whateva for udp.
 	char buffer[0];
@@ -35,11 +37,21 @@ int main(void)
 		//snprintf(addr, 64, "Hello\n");
 		printf(">>%s\n", addr);
 	}
-	for (addr = ring; addr < (ring + (num_pages << 12)); addr+= (64)) {
+	for (addr = ring , i = 0; addr < (ring + (num_pages << 12)); addr+= (64), i++) {
 		struct polled_io_entry *io_entry = (struct polled_io_entry *)addr;
 		io_entry->len = (64 - sizeof(struct polled_io_entry));
-		snprintf(io_entry->buffer, 64, "Hello");
+		snprintf(io_entry->buffer, 64, "Hello[%d]", i);
 		io_entry->status = (addr < (ring + (num_pages << 12))) ? 1 : 2;
+	}
+	printf("sent %d\n packets\n", i);
+
+	for (addr = ring , i = 0; addr < (ring + (num_pages << 12)); addr+= (64), i++) {
+		struct polled_io_entry *io_entry = (struct polled_io_entry *)addr;
+		while (io_entry->status) {
+			printf("Status of entry %d is %d", i, io_entry->status);
+			sched_yield();
+		}
+
 	}
 
 	return 0;

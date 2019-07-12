@@ -29,6 +29,13 @@ enum POLL_RING_STATUS {
 	POLL_RING_STATUS_LAST		= POLL_RING_STATUS_KERNEL_RESET,
 };
 
+struct polled_io_entry {
+	volatile int status;
+	int len;
+	//Add msg_head or whateva for udp.
+	char buffer[0];
+};
+
 struct priv_data {
 	struct list_head list;
 	struct page *page;
@@ -91,6 +98,7 @@ static void vm_open(struct vm_area_struct *vma)
 
 static void vm_close(struct vm_area_struct *vma)
 {
+	/*TODO: When process dies memory and buffer are leaking...*/
 	trace_printk("%s\n", __FUNCTION__);
 }
 
@@ -115,13 +123,6 @@ static struct vm_operations_struct vm_ops =
 	.close	= vm_close,
 	.fault	= vm_fault,
 	.open	= vm_open,
-};
-
-struct polled_io_entry {
-	int status;
-	int len;
-	//Add msg_head or whateva for udp.
-	char buffer[0];
 };
 
 static inline int poll_ring(struct priv_data *priv)
@@ -244,6 +245,7 @@ static __exit void poller_exit(void)
 		if (priv->task)
 			kthread_stop(priv->task);
 		kmem_cache_free(priv_cache, priv);
+		//TODO: please clean the pages as well
 	}
 	kmem_cache_destroy(priv_cache);
 }
