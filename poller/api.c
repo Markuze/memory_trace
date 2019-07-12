@@ -26,23 +26,21 @@ int main(void)
 		return 1;
 	}
 
-	ring = mmap(0, num_pages << 12, PROT_READ|PROT_WRITE|MAP_POPULATE, MAP_SHARED, fd, 0);
+	ring = mmap(0, num_pages << 12, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_POPULATE|MAP_NORESERVE|MAP_LOCKED, fd, 0);
 
 	close(fd);
 
 	printf("%p\n", ring);
 	for (addr = ring, i = 0; i < num_pages; i++, addr+= (1<<12)) {
 		//snprintf(addr, 64, "Hello\n");
-		addr[0] = 0;
+		printf(">>%s\n", addr);
 	}
-#if 0
-	for (addr = ring; addr < (ring + 64) /*(num_pages << 12))*/; addr+= 64) {
+	for (addr = ring; addr < (ring + (num_pages << 12)); addr+= (64)) {
 		struct polled_io_entry *io_entry = (struct polled_io_entry *)addr;
-		io_entry->status = 1;
-		io_entry->status = 64;
-		snprintf(io_entry->buffer, 64, "Hello\n");
+		io_entry->len = (64 - sizeof(struct polled_io_entry));
+		snprintf(io_entry->buffer, 64, "Hello");
+		io_entry->status = (addr < (ring + (num_pages << 12))) ? 1 : 2;
 	}
 
-	return 1;
-#endif
+	return 0;
 }

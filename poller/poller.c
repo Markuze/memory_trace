@@ -26,6 +26,7 @@ enum POLL_RING_STATUS {
 	POLL_RING_STATUS_USER		= 0,
 	POLL_RING_STATUS_KERNEL		= 1,
 	POLL_RING_STATUS_KERNEL_RESET	= 2,
+	POLL_RING_STATUS_LAST		= POLL_RING_STATUS_KERNEL_RESET,
 };
 
 struct priv_data {
@@ -101,9 +102,10 @@ static vm_fault_t vm_fault(struct vm_fault *vmf)
 	idx -= vmf->vma->vm_start;
 	idx >>= PAGE_SHIFT;
 
-	trace_printk("%s [%lu][%lu]\n", __FUNCTION__, vmf->address, idx);
+	trace_printk("%s [%lx][%lu]\n", __FUNCTION__, vmf->address, idx);
 
 	vmf->page = &priv->page[idx];
+	snprintf(page_address(&priv->page[idx]), 64, "hello");
 
 	return 0;
 }
@@ -128,15 +130,20 @@ static inline int poll_ring(struct priv_data *priv)
 	struct polled_io_entry *entry = priv->loc;
 
 	while (entry->status) {
-		void *next = (entry->status == POLL_RING_STATUS_KERNEL) ?
-				(void *)((unsigned long)entry +
-				sizeof(struct polled_io_entry) + entry->len):
-				page_address(priv->page);
-
-		trace_printk("status %d len %d next %p [%s]\n", entry->status, entry->len, next, entry->buffer);
-		entry->status = POLL_RING_STATUS_USER;
-		++cnt;
-		entry = next;
+		if (entry->status <= POLL_RING_STATUS_LAST) {
+			void *next = (entry->status == POLL_RING_STATUS_KERNEL) ?
+					(void *)((unsigned long)entry +
+					sizeof(struct polled_io_entry) + entry->len):
+					page_address(priv->page);
+			trace_printk("%lx + %lx + %x = %lx\n", (unsigned long)entry, sizeof(struct polled_io_entry), entry->len, (unsigned long)next);
+			trace_printk("%p: status %d len %d next %p [%s]\n", entry, entry->status, entry->len, next, entry->buffer);
+			++cnt;
+			entry->status = POLL_RING_STATUS_USER;
+			entry = next;
+		} else {
+			trace_printk("Einval status %d at %p\n", entry->status, entry);
+			entry->status = POLL_RING_STATUS_USER;
+		}
 	}
 	priv->loc = entry;
 	return cnt;
@@ -150,7 +157,11 @@ static int poll_thread(void *data)
 	trace_printk("Poller running...\n");
 	while (!kthread_should_stop()) {
 		pkts = poll_ring(priv);
-		usleep_range(16, 128);
+		if (pkts) {
+			trace_printk("Collected %d packets\n", pkts);
+		} else {
+			usleep_range(16, 128);
+		}
 #if 0
 	set_current_state(TASK_INTERRUPTIBLE);
 	if (!kthread_should_stop())
@@ -166,7 +177,7 @@ static int poller_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	struct priv_data *priv;
 
-	trace_printk("%s: (%s)[%lu:%lu][%d]\n", __FUNCTION__, (filp == vma->vm_file) ? "yes" : "no",
+	trace_printk("%s: (%s)[%lx:%lx][%d]\n", __FUNCTION__, (filp == vma->vm_file) ? "yes" : "no",
 			vma->vm_start, vma->vm_end,
 			get_order(vma->vm_end - vma->vm_start));
 
@@ -176,7 +187,7 @@ static int poller_mmap(struct file *filp, struct vm_area_struct *vma)
 	if (unlikely(!priv))
 		return VM_FAULT_OOM;
 
-	priv->page = alloc_pages(GFP_KERNEL|__GFP_COMP, get_order(vma->vm_end - vma->vm_start));
+	priv->page = alloc_pages(GFP_KERNEL, get_order(vma->vm_end - vma->vm_start));
 	if (unlikely(!priv->page)) {
 		pr_err("Leaking memory....\n");
 		return VM_FAULT_OOM;
@@ -185,6 +196,10 @@ static int poller_mmap(struct file *filp, struct vm_area_struct *vma)
 	priv->task  = kthread_run(poll_thread, priv, "poll_thread");
 	priv->vma = vma;
 	vma->vm_private_data = priv;
+
+	trace_printk("task %p Loc %p [pfn: %lx]\n",
+			priv->task, priv->loc, page_to_pfn(priv->page));//compound_order(priv->page)
+
 	filp->private_data = priv;
 	list_add(&priv->list, &priv_list);
 
@@ -225,7 +240,7 @@ static __exit void poller_exit(void)
 
 	list_for_each_entry_safe(priv, next, &priv_list, list) {
 		list_del(&priv->list);
-		trace_printk("%p\n", priv->task);
+		trace_printk("stopping %p\n", priv->task);
 		if (priv->task)
 			kthread_stop(priv->task);
 		kmem_cache_free(priv_cache, priv);
