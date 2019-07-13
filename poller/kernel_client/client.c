@@ -6,6 +6,10 @@
 #include <linux/proc_fs.h>
 #include <linux/module.h>
 #include <linux/delay.h>
+#include <linux/net.h>
+
+#include <net/net_namespace.h> //init_net
+#include <uapi/linux/in.h> //sockaddr_in
 
 #include <linux/uaccess.h>
 #include <linux/cpumask.h>
@@ -32,7 +36,6 @@ static ssize_t client_write(struct file *file, const char __user *buf,
 static ssize_t client_read(struct file *file, char __user *buf,
                              size_t buflen, loff_t *ppos)
 {
-	struct priv_data *priv = file->private_data;
 	if (!buf)
 		return -EINVAL;
 
@@ -68,24 +71,11 @@ static int noop_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static void vm_open(struct vm_area_struct *vma)
-{
-	trace_printk("%s\n", __FUNCTION__);
-}
-
-static void vm_close(struct vm_area_struct *vma)
-{
-	/*TODO: When process dies memory and buffer are leaking...*/
-	trace_printk("%s\n", __FUNCTION__);
-}
-
 static inline void udp_client(void)
 {
 #define PORT	8080
-#define MAXLINE 1024
 #define SERVER_ADDR (10<<24|1<<16|4<<8|38) /*10.1.4.38*/
 	int rc, i = 0;
-	char buffer[MAXLINE];
 	struct socket *tx = NULL;
 	struct sockaddr_in srv_addr = {0};
 	struct msghdr msg = { 0 };
@@ -93,14 +83,16 @@ static inline void udp_client(void)
 
         srv_addr.sin_family             = AF_INET;
         srv_addr.sin_addr.s_addr        = htonl(SERVER_ADDR);
-        srv_addr.sin_port               = htons(port);
+        srv_addr.sin_port               = htons(PORT);
 
 	msg.msg_name = &srv_addr;
-	msg.msg_len = sizeof(struct sockaddr);
+	msg.msg_namelen = sizeof(struct sockaddr);
 
 	kvec.iov_len = PAGE_SIZE;
-	if (! (kvec.iov_base = page_address(alloc_page(GFP_KERNEL))))
+	if (! (kvec.iov_base = page_address(alloc_page(GFP_KERNEL)))) {
+		rc = -ENOMEM;
 		goto err;
+	}
 
 	if ((rc = sock_create_kern(&init_net, PF_INET, SOCK_DGRAM, IPPROTO_UDP, &tx))) {
 		goto err;
@@ -108,7 +100,7 @@ static inline void udp_client(void)
 
 	snprintf(kvec.iov_base, 64, "HELLO!");
 	//for (i = 0; i < (1<<25); i++) {
-		kernel_sendmsg(tx, msg, 1, 42),
+		kernel_sendmsg(tx, &msg, &kvec, 1, 42);
 	//}
 	trace_printk("Hello message sent.(%d)\n", i);
 	return;
@@ -143,7 +135,7 @@ static __init int client_init(void)
 {
 	proc_dir = proc_mkdir_mode(POLLER_DIR_NAME, 00555, NULL);
 
-	client_task  = kthread_run(poll_thread, priv, "poll_thread");
+	client_task  = kthread_run(poll_thread, NULL, "poll_thread");
 
 	if (!proc_create(procname, 0666, proc_dir, &client_fops))
 		goto err;
@@ -155,10 +147,8 @@ err:
 
 static __exit void client_exit(void)
 {
-	struct priv_data *priv, *next;
-
 	remove_proc_subtree(POLLER_DIR_NAME, NULL);
-	kthread_stop(priv->task);
+	kthread_stop(client_task);
 }
 
 module_init(client_init);
