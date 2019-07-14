@@ -22,6 +22,9 @@ struct polled_io_entry {
 int main(void)
 {
 	char *addr, *ring;
+
+//sock....
+//may need to write ito MGMT and then map per pid_$cnt sock
 	int i,  fd  = open(MGMT, O_RDWR|O_SYNC);
 	if (fd < 0) {
 		printf("failed to open %d\n", fd);
@@ -37,14 +40,17 @@ int main(void)
 		//snprintf(addr, 64, "Hello\n");
 		printf(">>%s\n", addr);
 	}
+//end sock
 	for (addr = ring , i = 0; addr < (ring + (num_pages << 12)); addr+= (64), i++) {
+//sendto
 		struct polled_io_entry *io_entry = (struct polled_io_entry *)addr;
 		io_entry->len = (64 - sizeof(struct polled_io_entry));
 		snprintf(io_entry->buffer, 64, "Hello[%d]", i);
 		io_entry->status = (addr < (ring + (num_pages << 12))) ? 1 : 2;
+//sendto
 	}
 	printf("sent %d\n packets\n", i);
-
+//close may need to wait for all paclets to go away...
 	for (addr = ring , i = 0; addr < (ring + (num_pages << 12)); addr+= (64), i++) {
 		struct polled_io_entry *io_entry = (struct polled_io_entry *)addr;
 		while (io_entry->status) {

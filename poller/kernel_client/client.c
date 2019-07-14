@@ -99,9 +99,9 @@ static inline void udp_client(void)
         }
 
 	snprintf(kvec.iov_base, 64, "HELLO!");
-	//for (i = 0; i < (1<<25); i++) {
-		kernel_sendmsg(tx, &msg, &kvec, 1, 42);
-	//}
+	for (i = 0; i < (1<<25); i++) {
+	      kernel_sendmsg(tx, &msg, &kvec, 1, 42);
+	}
 	trace_printk("Hello message sent.(%d)\n", i);
 	return;
 err:
@@ -113,6 +113,7 @@ static int poll_thread(void *data)
 {
 	while (!kthread_should_stop()) {
 
+		trace_printk("starting new send...\n");
 		udp_client();
 
 		set_current_state(TASK_INTERRUPTIBLE);
