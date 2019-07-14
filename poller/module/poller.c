@@ -131,20 +131,24 @@ static inline int poll_ring(struct priv_data *priv)
 	struct polled_io_entry *entry = priv->loc;
 
 	while (entry->status) {
-		if (entry->status <= POLL_RING_STATUS_LAST) {
-			void *next = (entry->status == POLL_RING_STATUS_KERNEL) ?
-					(void *)((unsigned long)entry +
-					sizeof(struct polled_io_entry) + entry->len):
-					page_address(priv->page);
-			trace_printk("%lx + %lx + %x = %lx\n", (unsigned long)entry, sizeof(struct polled_io_entry), entry->len, (unsigned long)next);
-			trace_printk("%p: status %d len %d next %p [%s]\n", entry, entry->status, entry->len, next, entry->buffer);
-			++cnt;
-			entry->status = POLL_RING_STATUS_USER;
-			entry = next;
+		void *next = entry;
+		if (unlikely(entry->status == POLL_RING_STATUS_KERNEL_RESET)) {
+
+					next = page_address(priv->page);
 		} else {
-			trace_printk("Einval status %d at %p\n", entry->status, entry);
-			entry->status = POLL_RING_STATUS_USER;
+			if (entry->status <= POLL_RING_STATUS_LAST) {
+				next = (void *)((unsigned long)entry + sizeof(struct polled_io_entry) + entry->len);
+		//		trace_printk("%lx + %lx + %x = %lx\n", (unsigned long)entry, sizeof(struct polled_io_entry), entry->len, (unsigned long)next);
+		//		trace_printk("%p: status %d len %d next %p [%s]\n", entry, entry->status, entry->len, next, entry->buffer);
+				++cnt;
+				entry->status = POLL_RING_STATUS_USER;
+			} else {
+				trace_printk("Einval status %d at %p\n", entry->status, entry);
+				entry->status = POLL_RING_STATUS_USER;
+				break;
+			}
 		}
+		entry = next;
 	}
 	priv->loc = entry;
 	return cnt;
