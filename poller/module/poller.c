@@ -6,9 +6,12 @@
 #include <linux/proc_fs.h>
 #include <linux/module.h>
 #include <linux/delay.h>
-
+#include <linux/net.h>
 #include <linux/uaccess.h>
 #include <linux/cpumask.h>
+
+#include <net/net_namespace.h> //init_net
+#include <uapi/linux/in.h> //sockaddr_in
 
 MODULE_AUTHOR("Markuze Alex markuze@cs.technion.ac.il");
 MODULE_DESCRIPTION("Deferred I/O poller");
@@ -32,6 +35,7 @@ enum POLL_RING_STATUS {
 struct polled_io_entry {
 	volatile int status;
 	int len;
+	struct 	sockaddr_in in;
 	//Add msg_head or whateva for udp.
 	char buffer[0];
 };
@@ -42,6 +46,7 @@ struct priv_data {
 	struct task_struct *task;
 	struct vm_area_struct *vma;
 	struct polled_io_entry *loc;
+	struct socket *socket;
 };
 
 static ssize_t poller_write(struct file *file, const char __user *buf,
@@ -137,10 +142,21 @@ static inline int poll_ring(struct priv_data *priv)
 					next = page_address(priv->page);
 		} else {
 			if (entry->status <= POLL_RING_STATUS_LAST) {
+				struct msghdr msg = { 0 };
+				struct kvec kvec;
+
 				next = (void *)((unsigned long)entry + sizeof(struct polled_io_entry) + entry->len);
 		//		trace_printk("%lx + %lx + %x = %lx\n", (unsigned long)entry, sizeof(struct polled_io_entry), entry->len, (unsigned long)next);
 		//		trace_printk("%p: status %d len %d next %p [%s]\n", entry, entry->status, entry->len, next, entry->buffer);
 				++cnt;
+
+				msg.msg_name = &entry->in;
+				msg.msg_namelen = sizeof(struct sockaddr_in);
+				kvec.iov_base = entry->buffer;
+				kvec.iov_len = entry->len;
+
+				kernel_sendmsg(priv->socket, &msg, &kvec, 1, entry->len);
+
 				entry->status = POLL_RING_STATUS_USER;
 			} else {
 				trace_printk("Einval status %d at %p\n", entry->status, entry);
@@ -154,11 +170,23 @@ static inline int poll_ring(struct priv_data *priv)
 	return cnt;
 }
 
+static int poll_prepare(struct priv_data *priv)
+{
+	int rc;
+
+	if ((rc = sock_create_kern(&init_net, PF_INET, SOCK_DGRAM, IPPROTO_UDP, &priv->socket))) {
+		return rc;
+        }
+	return 0;
+}
+
 static int poll_thread(void *data)
 {
 	struct priv_data *priv = data;
 	int pkts = 0;
 
+	trace_printk("Poller initializing...\n");
+	poll_prepare(priv);
 	trace_printk("Poller running...\n");
 	while (!kthread_should_stop()) {
 		pkts = poll_ring(priv);
