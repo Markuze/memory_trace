@@ -12,7 +12,7 @@
 
 #define PORT	8080
 #define MAXLINE 1024
-#define MESSAGES 32//(1<<25)
+#define MESSAGES (1<<25)
 #define SERVER_ADDR (10<<24|1<<16|4<<8|38) /*10.1.4.38*/
 
 #define max(a,b) (a < b) ? b : a
@@ -27,6 +27,7 @@ int main(void)
 	struct sockaddr_in	 servaddr;
 
 	// Creating socket file descriptor
+	printf("socket create...\n");
 	if ( (sockfd = ir_socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) {
 		perror("socket creation failed");
 		exit(EXIT_FAILURE);
@@ -38,7 +39,8 @@ int main(void)
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port = htons(PORT);
 	servaddr.sin_addr.s_addr = htonl(SERVER_ADDR);
-
+	getchar();
+	printf("send loop\n");
 	for (i = 0; i < MESSAGES; i++) {
 		ir_sendto(sockfd, (const char *)hello, max(strlen(hello), 42),
 			flags, (const struct sockaddr *) &servaddr,

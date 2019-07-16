@@ -9,6 +9,7 @@
 #include <linux/net.h>
 #include <linux/uaccess.h>
 #include <linux/cpumask.h>
+#include <linux/kallsyms.h>
 
 #include <net/net_namespace.h> //init_net
 #include <uapi/linux/in.h> //sockaddr_in
@@ -48,6 +49,9 @@ struct priv_data {
 	struct polled_io_entry *loc;
 	struct socket *socket;
 };
+
+typedef void (*bind_mask_func)(struct task_struct *, const struct cpumask *);
+bind_mask_func pkthread_bind_mask;
 
 static ssize_t poller_write(struct file *file, const char __user *buf,
                               size_t len, loff_t *ppos)
@@ -139,15 +143,15 @@ static inline int poll_ring(struct priv_data *priv)
 		void *next = entry;
 		if (unlikely(entry->status == POLL_RING_STATUS_KERNEL_RESET)) {
 			/* No valid data in this entry, reset...*/
+			//trace_printk("Reset....\n");
 			next = page_address(priv->page);
+			entry->status = POLL_RING_STATUS_USER;
 		} else {
 			if (likely(entry->status <= POLL_RING_STATUS_LAST)) {
 				struct msghdr msg = { 0 };
 				struct kvec kvec;
 
 				next = (void *)((unsigned long)entry + sizeof(struct polled_io_entry) + entry->len);
-				//trace_printk("%lx + %lx + %x = %lx\n", (unsigned long)entry, sizeof(struct polled_io_entry), entry->len, (unsigned long)next);
-				//trace_printk("%p: status %d len %d next %p [%s]\n", entry, entry->status, entry->len, next, entry->buffer);
 				++cnt;
 
 				msg.msg_name = &entry->in;
@@ -159,11 +163,12 @@ static inline int poll_ring(struct priv_data *priv)
 
 				entry->status = POLL_RING_STATUS_USER;
 			} else {
-				trace_printk("Einval status %d at %p\n", entry->status, entry);
+				//trace_printk("Einval status %d at %p\n", entry->status, entry);
 				entry->status = POLL_RING_STATUS_USER;
 				break;
 			}
 		}
+		//trace_printk("%p: status %d len %d next %p [%s]\n", entry, entry->status, entry->len, next, entry->buffer);
 		entry = next;
 	}
 	priv->loc = entry;
@@ -190,10 +195,11 @@ static int poll_thread(void *data)
 	trace_printk("Poller running...\n");
 	while (!kthread_should_stop()) {
 		pkts = poll_ring(priv);
-		if (pkts) {
-			trace_printk("Collected %d packets\n", pkts);
-		} else {
-			usleep_range(16, 128);
+		if (!pkts) {
+			//trace_printk("Collected %d packets\n", pkts);
+		//} else {
+			//usleep_range(16, 128);
+			schedule();
 		}
 #if 0
 	set_current_state(TASK_INTERRUPTIBLE);
@@ -210,32 +216,39 @@ static int poller_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	struct priv_data *priv;
 
-	trace_printk("%s: (%s)[%lx:%lx][%d]\n", __FUNCTION__, (filp == vma->vm_file) ? "yes" : "no",
+	trace_printk("%s: (%s)[%lx:%lx][%d]<%p>\n", __FUNCTION__, (filp == vma->vm_file) ? "yes" : "no",
 			vma->vm_start, vma->vm_end,
-			get_order(vma->vm_end - vma->vm_start));
+			get_order(vma->vm_end - vma->vm_start), filp);
 
 	/* Disaalow double mmap...; check for vma->priv*/
+	if (!filp->private_data) {
+		priv = kmem_cache_alloc(priv_cache, GFP_KERNEL);
+		if (unlikely(!priv))
+			return VM_FAULT_OOM;
 
-	priv = kmem_cache_alloc(priv_cache, GFP_KERNEL);
-	if (unlikely(!priv))
-		return VM_FAULT_OOM;
+		priv->page = alloc_pages(GFP_KERNEL, get_order(vma->vm_end - vma->vm_start));
+		if (unlikely(!priv->page)) {
+			pr_err("Leaking memory....\n");
+			return VM_FAULT_OOM;
+		}
+		priv->loc = page_address(priv->page);
+		priv->task  = kthread_create_on_node(poll_thread, priv, 0, "poll_thread");
+		pkthread_bind_mask(priv->task, cpumask_of(0));
+		priv->task->flags &= ~PF_NO_SETAFFINITY;
+		wake_up_process(priv->task);
+		//kthread_run(poll_thread, priv, "poll_thread");
+		trace_printk("task %p [%x] Loc %p [pfn: %lx] priv [%p]\n",
+				priv->task, priv->task->flags, priv->loc, page_to_pfn(priv->page),
+				priv);//compound_order(priv->page)
 
-	priv->page = alloc_pages(GFP_KERNEL, get_order(vma->vm_end - vma->vm_start));
-	if (unlikely(!priv->page)) {
-		pr_err("Leaking memory....\n");
-		return VM_FAULT_OOM;
+		filp->private_data = priv;
+		list_add(&priv->list, &priv_list);
+	} else {
+		priv = filp->private_data;
+		trace_printk("Remap... [%p]\n", filp);
 	}
-	priv->loc = page_address(priv->page);
-	priv->task  = kthread_run(poll_thread, priv, "poll_thread");
 	priv->vma = vma;
 	vma->vm_private_data = priv;
-
-	trace_printk("task %p Loc %p [pfn: %lx]\n",
-			priv->task, priv->loc, page_to_pfn(priv->page));//compound_order(priv->page)
-
-	filp->private_data = priv;
-	list_add(&priv->list, &priv_list);
-
 	vma->vm_ops = &vm_ops;
 
 	return 0;
@@ -252,6 +265,7 @@ static const struct file_operations poller_fops = {
 
 static __init int poller_init(void)
 {
+	pkthread_bind_mask = (void *)kallsyms_lookup_name("kthread_bind_mask");
 	proc_dir = proc_mkdir_mode(POLLER_DIR_NAME, 00555, NULL);
 
 	priv_cache = kmem_cache_create("priv_cache",

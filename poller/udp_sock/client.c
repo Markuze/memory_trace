@@ -16,7 +16,7 @@
 // Driver code
 int main() {
 	int sockfd;
-	int i, len;
+	int i = 0, len;
 	int flags = MSG_CONFIRM;
 	char buffer[MAXLINE];
 	char *hello = "Hello from client";
@@ -35,11 +35,11 @@ int main() {
 	servaddr.sin_port = htons(PORT);
 	servaddr.sin_addr.s_addr = htonl(SERVER_ADDR);
 
-	for (i = 0; i < (1<<25); i++) {
+	//for (i = 0; i < (1<<25); i++) {
 		sendto(sockfd, (const char *)hello, max(strlen(hello), 42),
 			flags, (const struct sockaddr *) &servaddr,
 				sizeof(servaddr));
-	}
+	//}
 	printf("Hello message sent.(%d)\n", i);
 /*
 	n = recvfrom(sockfd, (char *)buffer, MAXLINE,

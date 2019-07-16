@@ -55,15 +55,21 @@ int ir_socket(int af, int sock_type, int protocol)
 ssize_t ir_sendto(int sockfd, const void *buf, size_t len, int flags,
 		       const struct sockaddr *dest_addr, socklen_t addrlen)
 {
+	//static int polling;
 	struct polled_io_entry *entry;
 
 restart:
 	entry  = this->head;
 
 	while (entry->status != 0) {
-		sched_yield();
+		/*
+		if (!polling) {
+			printf("Polling %p [%p] <%x>\n", entry, this->ring, entry->status);
+			polling = 1;
+		}*/
+		//sched_yield();
 	}
-
+	//polling = 0;
 	entry->len = len; //+ sizeof(struct polled_io_entry);
 	this->head += len + sizeof(struct polled_io_entry);
 
@@ -73,6 +79,7 @@ restart:
 	if (((unsigned long)(this->head)) >= ((unsigned long)(this->ring +  (num_pages << 12)))) {
 		entry->status = 2;
 		this->head = this->ring;
+		//printf("reseting... [%p]", entry);
 		goto restart;
 	}
 
