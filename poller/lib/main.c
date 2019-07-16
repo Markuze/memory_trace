@@ -12,6 +12,7 @@
 
 #define PORT	8080
 #define MAXLINE 1024
+#define MESSAGES 32//(1<<25)
 #define SERVER_ADDR (10<<24|1<<16|4<<8|38) /*10.1.4.38*/
 
 #define max(a,b) (a < b) ? b : a
@@ -38,7 +39,7 @@ int main(void)
 	servaddr.sin_port = htons(PORT);
 	servaddr.sin_addr.s_addr = htonl(SERVER_ADDR);
 
-	for (i = 0; i < (1<<25); i++) {
+	for (i = 0; i < MESSAGES; i++) {
 		ir_sendto(sockfd, (const char *)hello, max(strlen(hello), 42),
 			flags, (const struct sockaddr *) &servaddr,
 				sizeof(servaddr));

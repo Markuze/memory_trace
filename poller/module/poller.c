@@ -118,7 +118,7 @@ static vm_fault_t vm_fault(struct vm_fault *vmf)
 	trace_printk("%s [%lx][%lu]\n", __FUNCTION__, vmf->address, idx);
 
 	vmf->page = &priv->page[idx];
-	snprintf(page_address(&priv->page[idx]), 64, "hello");
+	get_page(vmf->page);
 
 	return 0;
 }
@@ -138,16 +138,16 @@ static inline int poll_ring(struct priv_data *priv)
 	while (entry->status) {
 		void *next = entry;
 		if (unlikely(entry->status == POLL_RING_STATUS_KERNEL_RESET)) {
-
-					next = page_address(priv->page);
+			/* No valid data in this entry, reset...*/
+			next = page_address(priv->page);
 		} else {
-			if (entry->status <= POLL_RING_STATUS_LAST) {
+			if (likely(entry->status <= POLL_RING_STATUS_LAST)) {
 				struct msghdr msg = { 0 };
 				struct kvec kvec;
 
 				next = (void *)((unsigned long)entry + sizeof(struct polled_io_entry) + entry->len);
-		//		trace_printk("%lx + %lx + %x = %lx\n", (unsigned long)entry, sizeof(struct polled_io_entry), entry->len, (unsigned long)next);
-		//		trace_printk("%p: status %d len %d next %p [%s]\n", entry, entry->status, entry->len, next, entry->buffer);
+				//trace_printk("%lx + %lx + %x = %lx\n", (unsigned long)entry, sizeof(struct polled_io_entry), entry->len, (unsigned long)next);
+				//trace_printk("%p: status %d len %d next %p [%s]\n", entry, entry->status, entry->len, next, entry->buffer);
 				++cnt;
 
 				msg.msg_name = &entry->in;
