@@ -195,11 +195,13 @@ static int poll_thread(void *data)
 	trace_printk("Poller running...\n");
 	while (!kthread_should_stop()) {
 		pkts = poll_ring(priv);
-		if (!pkts) {
+		if (!pkts || need_resched()) {
 			//trace_printk("Collected %d packets\n", pkts);
 		//} else {
 			//usleep_range(16, 128);
 			schedule();
+		} else {
+			cpu_relax();
 		}
 #if 0
 	set_current_state(TASK_INTERRUPTIBLE);

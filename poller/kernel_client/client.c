@@ -7,6 +7,8 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/net.h>
+#include <linux/kallsyms.h>
+#include <linux/cpumask.h>
 
 #include <net/net_namespace.h> //init_net
 #include <uapi/linux/in.h> //sockaddr_in
@@ -21,6 +23,9 @@ MODULE_VERSION("0.1");
 
 #define POLLER_DIR_NAME "io_client"
 #define procname "udp_client"
+
+typedef void (*bind_mask_func)(struct task_struct *, const struct cpumask *);
+bind_mask_func pkthread_bind_mask;
 
 static struct proc_dir_entry *proc_dir;
 static struct task_struct *client_task;
@@ -111,15 +116,15 @@ err:
 
 static int poll_thread(void *data)
 {
+	trace_printk("starting new send...\n");
 	while (!kthread_should_stop()) {
-
-		trace_printk("starting new send...\n");
-		udp_client();
 
 		set_current_state(TASK_INTERRUPTIBLE);
 		if (!kthread_should_stop())
 			schedule();
 		__set_current_state(TASK_RUNNING);
+
+		udp_client();
 	}
 	return 0;
 }
@@ -135,8 +140,13 @@ static const struct file_operations client_fops = {
 static __init int client_init(void)
 {
 	proc_dir = proc_mkdir_mode(POLLER_DIR_NAME, 00555, NULL);
+	pkthread_bind_mask = (void *)kallsyms_lookup_name("kthread_bind_mask");
 
-	client_task  = kthread_run(poll_thread, NULL, "poll_thread");
+	//client_task  = kthread_run(poll_thread, NULL, "poll_thread");
+	client_task  = kthread_create_on_node(poll_thread, NULL, 0, "client_thread");
+	pkthread_bind_mask(client_task, cpumask_of(0));
+	client_task->flags &= ~PF_NO_SETAFFINITY;
+	wake_up_process(client_task);
 
 	if (!proc_create(procname, 0666, proc_dir, &client_fops))
 		goto err;
