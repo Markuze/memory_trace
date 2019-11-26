@@ -12,7 +12,7 @@
 #include <sched.h>
 
 #define MGMT	"/proc/io_poller/mngmnt"
-#define num_pages  2
+#define num_pages  (8 << 10)
 
 struct polled_io_entry {
 	volatile int status;

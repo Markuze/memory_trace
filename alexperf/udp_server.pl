@@ -21,6 +21,6 @@ while ($server->recv($datagram, $size, $flags)) {
 	my $ipport = $server->peerport;
 	$total += length($datagram);
 	$pkt++;
-#	print "received ", length($datagram), "bytes from $ipaddr:$ipport\n";
+	print "received ", length($datagram), "bytes from $ipaddr:$ipport\n";
 }
 

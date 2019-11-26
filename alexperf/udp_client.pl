@@ -7,9 +7,10 @@ use Time::HiRes;
 
 $| = 1; #?
 
-my $serverip = '127.0.0.1';	#VMA
+#my $serverip = '127.0.0.1';	#VMA
+my $serverip = '10.0.130.100';
 my $serverport = 5555;
-my $size = (64 * 1024) - 28;
+my $size = (64 * 1024) - 32;
 
 my $message = IO::Socket::INET->new(Proto=>"udp", PeerPort=>$serverport,
 				     PeerAddr=>$serverip);

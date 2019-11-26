@@ -11,11 +11,12 @@
 #include "io_ring.h"
 
 #define PORT	8080
-#define MAXLINE 1024
+#define MAXLINE (1<<16)
 #define MESSAGES (1<<25)
 #define SERVER_ADDR (10<<24|1<<16|4<<8|38) /*10.1.4.38*/
 
 #define max(a,b) (a < b) ? b : a
+
 // Driver code
 int main(void)
 {
@@ -42,7 +43,7 @@ int main(void)
 	getchar();
 	printf("send loop\n");
 	for (i = 0; i < MESSAGES; i++) {
-		ir_sendto(sockfd, (const char *)hello, max(strlen(hello), 42),
+		ir_sendto(sockfd, (const char *)buffer, (1<<16),
 			flags, (const struct sockaddr *) &servaddr,
 				sizeof(servaddr));
 	}
