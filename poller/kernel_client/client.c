@@ -28,13 +28,14 @@ typedef void (*bind_mask_func)(struct task_struct *, const struct cpumask *);
 bind_mask_func pkthread_bind_mask;
 
 static struct proc_dir_entry *proc_dir;
-static struct task_struct *client_task;
+static struct task_struct *udp_client_task;
+static struct task_struct *tcp_client_task;
 
 static ssize_t client_write(struct file *file, const char __user *buf,
                               size_t len, loff_t *ppos)
 {
 	trace_printk("%s\n", __FUNCTION__);
-	wake_up_process(client_task);
+	wake_up_process(file->private_data);
 	return len;
 }
 
@@ -72,6 +73,7 @@ static ssize_t client_read(struct file *file, char __user *buf,
 
 static int noop_open(struct inode *inode, struct file *file)
 {
+	file->private_data = PDE_DATA(inode);
 	trace_printk("%s\n", __FUNCTION__);
 	return 0;
 }
@@ -120,11 +122,11 @@ static int poll_thread(void *data)
 	while (!kthread_should_stop()) {
 
 		set_current_state(TASK_INTERRUPTIBLE);
-		if (!kthread_should_stop())
-			schedule();
+		schedule();
 		__set_current_state(TASK_RUNNING);
 
-		udp_client();
+		if (!kthread_should_stop())
+			udp_client();
 	}
 	return 0;
 }
@@ -142,13 +144,20 @@ static __init int client_init(void)
 	proc_dir = proc_mkdir_mode(POLLER_DIR_NAME, 00555, NULL);
 	pkthread_bind_mask = (void *)kallsyms_lookup_name("kthread_bind_mask");
 
-	//client_task  = kthread_run(poll_thread, NULL, "poll_thread");
-	client_task  = kthread_create_on_node(poll_thread, NULL, 0, "client_thread");
-	pkthread_bind_mask(client_task, cpumask_of(0));
-	client_task->flags &= ~PF_NO_SETAFFINITY;
-	wake_up_process(client_task);
+	udp_client_task  = kthread_create(poll_thread, NULL, "udp_client_thread");
+	tcp_client_task  = kthread_create(poll_thread, NULL, "tcp_client_thread");
 
-	if (!proc_create(procname, 0666, proc_dir, &client_fops))
+	//pkthread_bind_mask(client_task, cpumask_of(0));
+
+	udp_client_task->flags &= ~PF_NO_SETAFFINITY;
+	tcp_client_task->flags &= ~PF_NO_SETAFFINITY;
+
+	wake_up_process(udp_client_task);
+	wake_up_process(tcp_client_task);
+
+	if (!proc_create_data("udp_"procname, 0666, proc_dir, &client_fops, udp_client_task))
+		goto err;
+	if (!proc_create_data("tcp_"procname, 0666, proc_dir, &client_fops, tcp_client_task))
 		goto err;
 
 	return 0;
@@ -159,7 +168,8 @@ err:
 static __exit void client_exit(void)
 {
 	remove_proc_subtree(POLLER_DIR_NAME, NULL);
-	kthread_stop(client_task);
+	kthread_stop(udp_client_task);
+	kthread_stop(tcp_client_task);
 }
 
 module_init(client_init);
