@@ -78,10 +78,58 @@ static int noop_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static inline void udp_client(void)
+static inline void tcp_client(void)
 {
 #define PORT	8080
 #define SERVER_ADDR (10<<24|1<<16|4<<8|38) /*10.1.4.38*/
+	int rc, i = 0;
+	struct socket *tx = NULL;
+	struct sockaddr_in srv_addr = {0};
+	struct msghdr msg = { 0 };
+	struct kvec kvec[16];
+	void *base = NULL;
+
+        srv_addr.sin_family             = AF_INET;
+        srv_addr.sin_addr.s_addr        = htonl(SERVER_ADDR);
+        srv_addr.sin_port               = htons(PORT);
+
+	msg.msg_name = &srv_addr;
+	msg.msg_namelen = sizeof(struct sockaddr);
+
+	if (! (base  = page_address(alloc_pages(GFP_KERNEL, 4)))) {
+		rc = -ENOMEM;
+		goto err;
+	}
+
+	for (i = 0; i < 16; i++) {
+		kvec[i].iov_len = PAGE_SIZE;
+		kvec[i].iov_base = base + (i * PAGE_SIZE);
+	}
+
+	if ((rc = sock_create_kern(&init_net, PF_INET, SOCK_STREAM, IPPROTO_TCP, &tx))) {
+		goto err;
+        }
+
+        if ((rc = kernel_connect(tx, (struct sockaddr *)&srv_addr, sizeof(struct sockaddr), 0))) {
+                trace_printk("RC = %d (%d)", rc, __LINE__);
+		goto err;
+        }
+
+	for (i = 0; i < (1<<19); i++) {
+	      kernel_sendmsg(tx, &msg, kvec, 16, (16 << PAGE_SHIFT));
+	}
+	trace_printk("Hello messages sent.(%d)\n", i);
+	goto ok;
+err:
+	trace_printk("ERROR %d\n", rc);
+ok:
+	sock_release(tx);
+	free_pages((unsigned long)base, 4);
+	return;
+}
+
+static inline void udp_client(void)
+{
 	int rc, i = 0;
 	struct socket *tx = NULL;
 	struct sockaddr_in srv_addr = {0};
