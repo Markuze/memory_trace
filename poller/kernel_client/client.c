@@ -81,7 +81,7 @@ static int noop_open(struct inode *inode, struct file *file)
 static inline void tcp_client(void)
 {
 #define PORT	8080
-#define SERVER_ADDR (10<<24|1<<16|4<<8|38) /*10.1.4.38*/
+#define SERVER_ADDR (10<<24|154<<16|0<<8|19) /*10.1.4.38*/
 	int rc, i = 0;
 	struct socket *tx = NULL;
 	struct sockaddr_in srv_addr = {0};
@@ -195,7 +195,7 @@ static __init int client_init(void)
 	udp_client_task  = kthread_create(poll_thread, NULL, "udp_client_thread");
 	tcp_client_task  = kthread_create(poll_thread, NULL, "tcp_client_thread");
 
-	//pkthread_bind_mask(client_task, cpumask_of(0));
+	pkthread_bind_mask(udp_client_task, cpumask_of(0));
 
 	udp_client_task->flags &= ~PF_NO_SETAFFINITY;
 	tcp_client_task->flags &= ~PF_NO_SETAFFINITY;

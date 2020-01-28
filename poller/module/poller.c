@@ -111,7 +111,7 @@ static void vm_close(struct vm_area_struct *vma)
 	trace_printk("%s\n", __FUNCTION__);
 }
 
-static vm_fault_t vm_fault(struct vm_fault *vmf)
+static int vm_fault(struct vm_fault *vmf)
 {
 	struct priv_data *priv = (struct priv_data *)vmf->vma->vm_private_data;
 	unsigned long idx = vmf->address;
